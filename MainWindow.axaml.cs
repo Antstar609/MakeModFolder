@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -10,6 +11,8 @@ using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using MsBox.Avalonia;
+using MsBox.Avalonia.Dto;
+using MsBox.Avalonia.Models;
 
 namespace KCDModBuilder;
 
@@ -22,6 +25,7 @@ public partial class MainWindow : Window
 
 	private const string m_GameExePath1 = @"\Bin\Win64\KingdomCome.exe";
 	private const string m_GameExePath2 = @"\Bin\Win64MasterMasterSteamPGO\KingdomCome.exe";
+	private string m_modPath = "";
 
 	public MainWindow()
 	{
@@ -37,14 +41,13 @@ public partial class MainWindow : Window
 
 	private async Task MakeModFolderAsync()
 	{
-		string modPath = Path.Combine(xGamePath.Text, "Mods", xModName.Text);
+		m_modPath = Path.Combine(xGamePath.Text, "Mods", xModName.Text);
+		Directory.CreateDirectory(m_modPath);
 
-		Directory.CreateDirectory(modPath);
-		CopyModdingEula(modPath);
-		ZipDirectories(modPath);
-
+		CopyModdingEula();
+		ZipDirectories();
 		m_modManifestWriter.WriteModManifest();
-		CompressArchive(modPath);
+		CompressArchive();
 
 		if (!IsSilent)
 		{
@@ -54,12 +57,12 @@ public partial class MainWindow : Window
 			xPresets.IsEnabled = true;
 		}
 
-		await DisplayMessageAsync("The mod folder has been created at" + modPath);
+		await DisplayMessageAsync("The mod folder has been created at " + m_modPath);
 	}
 
-	private void CopyModdingEula(string _modPath)
+	private void CopyModdingEula()
 	{
-		string targetFilePath = Path.Combine(_modPath, "modding_eula.txt");
+		string targetFilePath = Path.Combine(m_modPath, "modding_eula.txt");
 		if (File.Exists(targetFilePath)) return;
 
 		using Stream resourceStream = AssetLoader.Open(new Uri("avares://KCDModBuilder/Assets/modding_eula.txt"));
@@ -68,9 +71,9 @@ public partial class MainWindow : Window
 		resourceStream.CopyTo(fileStream);
 	}
 
-	private void ZipDirectories(string _modPath)
+	private void ZipDirectories()
 	{
-		var dataDir = Directory.CreateDirectory(Path.Combine(_modPath, "Data"));
+		var dataDir = Directory.CreateDirectory(Path.Combine(m_modPath, "Data"));
 		string zipFilePath = Path.Combine(dataDir.FullName, xModName.Text.Replace(" ", "_").ToLower() + ".pak");
 		var projectDirs = Directory.GetDirectories(xProjectPath.Text);
 
@@ -91,7 +94,7 @@ public partial class MainWindow : Window
 
 			if (!dir.Contains("Localization")) continue;
 
-			var localizationPath = Directory.CreateDirectory(Path.Combine(_modPath, "Localization"));
+			var localizationPath = Directory.CreateDirectory(Path.Combine(m_modPath, "Localization"));
 			string[] localizationDirectories = Directory.GetDirectories(Path.GetFullPath(dir));
 			foreach (string languageDir in localizationDirectories)
 			{
@@ -117,7 +120,7 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private void CompressArchive(string _modPath)
+	private void CompressArchive()
 	{
 		string archivePath = Path.Combine(xProjectPath.Text, "Archives");
 
@@ -134,7 +137,7 @@ public partial class MainWindow : Window
 			File.Delete(archiveFileName);
 		}
 
-		ZipFile.CreateFromDirectory(_modPath, archiveFileName, CompressionLevel.Optimal, true);
+		ZipFile.CreateFromDirectory(m_modPath, archiveFileName, CompressionLevel.Optimal, true);
 	}
 
 	private async Task ProjectBrowsePathAsync()
@@ -275,7 +278,38 @@ public partial class MainWindow : Window
 		}
 		else
 		{
-			await MessageBoxManager.GetMessageBoxStandard("KCD Mod Builder", _message).ShowAsync();
+			if (_message.Contains("The mod folder has been created at"))
+			{
+				var messageBoxCustomParams = new MessageBoxCustomParams
+				{
+					ContentTitle = "KCD Mod Builder",
+					ContentMessage = _message,
+					WindowStartupLocation = WindowStartupLocation.CenterOwner,
+					CanResize = false,
+					ShowInCenter = true,
+					ButtonDefinitions = new List<ButtonDefinition>
+					{
+						new()
+						{
+							Name = "Open Mod Location"
+						},
+						new()
+						{
+							Name = "Ok",
+						}
+					}
+				};
+
+				var result = await MessageBoxManager.GetMessageBoxCustom(messageBoxCustomParams).ShowAsync();
+				if (result == "Open Mod Location")
+				{
+					System.Diagnostics.Process.Start("explorer.exe", m_modPath);
+				}
+			}
+			else
+			{
+				await MessageBoxManager.GetMessageBoxStandard("KCD Mod Builder", _message).ShowAsync();
+			}
 		}
 	}
 }
